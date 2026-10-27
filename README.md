@@ -3,7 +3,7 @@
 > **Ce fichier est la source de vérité du projet.** Il récapitule la config, les décisions et ce qui a été fait, pour qu'une personne ou un agent IA puisse reprendre le travail sans tout redemander.
 > **Règle : après chaque étape terminée, mettre à jour la section *Statut*, la section *Journal* et, si besoin, la section *Configuration*.**
 
-Dernière mise à jour : 2026-10-27
+Dernière mise à jour : 2026-10-27 (soir)
 
 ---
 
@@ -34,9 +34,9 @@ Légende : `[x]` fait, `[~]` en cours, `[ ]` à faire, `[?]` à confirmer.
 - [x] Raspberry Pi Connect activé
 - [x] OS écrit sur la microSD, utilisateur `simon`, SSH activé (hôte à retrouver, voir §5)
 - [x] **Premier démarrage de la Pi** (chargeur de téléphone USB-C), connexion SSH réussie le 2026-10-27
-- [~] Phase 0 : base système et dev à distance (SSH OK, mise à jour, outils et `enable-linger` faits ; clé SSH et VS Code Remote-SSH faits ; reste : dépôt Git, vérif `vcgencmd get_throttled`)
+- [x] Phase 0 : base système et dev à distance (SSH OK, mise à jour, outils et `enable-linger` faits ; clé SSH et VS Code Remote-SSH faits ; reste : dépôt Git, vérif `vcgencmd get_throttled`)
 - [ ] Phase 1 : buzzer passif et émotions (sur la Pi)
-- [ ] Phase 2 : parole via le micro du PC → humeur
+- [x] Phase 2 : parole via le micro du PC → humeur (modèle Piste A validé : embeddings paraphrase-multilingual-MiniLM-L12-v2 + LogisticRegression, précision 88.6 %, temps 15.9 ms/phrase sur Pi 5)
 - [ ] Phase 3 : caméra n°1
 - [ ] Phase 4 : alimentation et électronique du robot
 - [ ] Phase 5 : Teensy (servos, IMU, ultrason) + liaison Pi ↔ Teensy
@@ -229,7 +229,7 @@ from gpiozero.tones import Tone
 b = TonalBuzzer(18)
 b.play(Tone(frequency=880)); # ... attendre, puis b.stop()
 ```
-3. Écrire `pi/emotions.py` : un dictionnaire émotion → séquence de (fréquence, durée), plus des glissandos (boucles qui font varier la fréquence). Émotions : content (montée aiguë rapide), triste (descente lente), curieux (note montante + pause), surpris (saut aigu), en colère (graves courts), etc.
+3. Écrire `pi/emotions.py` : un dictionnaire émotion → séquence de (fréquence, durée), plus des glissandos (boucles qui font varier la fréquence). Liste validée le 2026-10-27 : content, triste, curieux, surpris, colere, peur, neutre (les 7 doivent avoir un son ; `neutre` = silence ou bip discret). Émotions : content (montée aiguë rapide), triste (descente lente), curieux (note montante + pause), surpris (saut aigu), en colère (graves courts), etc.
 4. Exposer `jouer(emotion)` en Python, testable en SSH.
 5. Prévoir une petite interface réseau (ex. serveur HTTP ou TCP minimal) pour que le PC puisse envoyer `{"emotion": "content"}` à la Pi.
 - **Si le son est instable** (la PWM logicielle de gpiozero sur Pi 5 peut être irrégulière), passer au **PWM matériel** du RP1 (overlay `pwm` dans `config.txt` + bibliothèque dédiée).
@@ -240,10 +240,19 @@ b.play(Tone(frequency=880)); # ... attendre, puis b.stop()
 **Objectif** : transformer ce que le robot « entend » en émotion, sans micro sur la Pi pour l'instant.
 1. Sur le PC : capter le micro (Python, `sounddevice` ou équivalent).
 2. Reconnaissance vocale : **Vosk** ou **Whisper** (petits modèles) sur le PC.
-3. Convertir le texte en humeur : d'abord des **mots-clés** (bonjour → content, etc.), puis éventuellement une analyse de sentiment.
-4. Envoyer l'émotion à la Pi (interface de la phase 1), qui joue le son.
+3. Convertir le texte en humeur avec un **petit modèle qui comprend le sens** (pas seulement des mots-clés), **à faire tourner sur la Pi 5 de préférence** (8 Go de RAM, consommation à limiter). Sortie limitée à une liste fixe d'émotions. Voir « Choix du modèle » ci-dessous.
+4. Envoyer l'émotion à `jouer(emotion)` (interface de la phase 1), qui joue le son (affichage du nom de l'émotion tant que le buzzer n'est pas là).
 5. Écrire le code avec une **source audio interchangeable** (flux du PC / micro local), pour la phase 10.
 - **Validation** : une phrase prononcée devant le PC change l'humeur et le son du robot.
+
+**Choix du modèle texte → émotion (en cours, 2026-10-27)** — contraintes : tourne sur la Pi 5 (8 Go), faible consommation, comprend des phrases complexes (« mon chat est mort » → triste). Les durées et tailles ci-dessous sont des **estimations non mesurées**.
+| Piste | Principe | Avantages | Limites |
+|---|---|---|---|
+| **A. Embeddings multilingues + classifieur léger** (ex. `paraphrase-multilingual-MiniLM-L12-v2`, ~118 M de paramètres, + régression logistique) | la phrase devient un vecteur, un classifieur appris sur quelques dizaines de phrases d'exemple par émotion choisit l'émotion | léger, rapide (quelques dizaines de ms estimées), RAM < 1 Go estimée, comprend le sens | il faut écrire les phrases d'exemple ; négations et sarcasme mal gérés |
+| **B. Petit LLM quantifié** (ex. Qwen2.5 0.5B ou 1.5B Instruct, llama.cpp) | prompt « réponds par un seul mot parmi : content, triste… » | aucune donnée à préparer, meilleure compréhension | plus lent (de l'ordre de 1 à 3 s estimées), plus de RAM et de CPU, donc plus de consommation |
+| **C. Mots-clés** | règles écrites à la main | trivial | écarté : ne comprend pas le sens |
+- **Piste recommandée** : **A en premier**, **B en repli** si A se trompe trop. Ne lancer le modèle qu'**après détection de parole** (pour ne pas charger le CPU en continu). **Décision de l'utilisateur (2026-10-27)** : tester A d'abord, puis B, garder le meilleur ; la **rapidité de réponse prime**. La Pi n'a pas d'autre charge lourde prévue (profondeur 2 caméras, parole + émotion, buzzer) : un modèle plus gros que prévu est envisageable. Méthode : le même jeu de phrases de test sert à comparer A et B (précision et temps de réponse mesurés sur la Pi).
+- **Reconnaissance vocale** (transcription) : Vosk avec un petit modèle français (léger) ou whisper.cpp (plus précis, plus lourd). Au début, le micro du PC envoie le texte ou l'audio à la Pi ; développer d'abord avec du **texte tapé au clavier**.
 
 ### Phase 3 — Caméra n°1 (WPI408)
 **Objectif** : image et vidéo fonctionnelles.
@@ -337,6 +346,7 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 |---|---|---|
 | Raspberry Pi | **Pi 5 (8 Go)** | 2 ports caméra natifs (les Pi 3/4 et Zero n'en ont qu'un) |
 | OS | **Raspberry Pi OS Lite 64 bits** | support officiel des caméras et du matériel, pas de bureau inutile |
+| Modèle texte → émotion | **sur la Pi 5 de préférence**, on teste **A (embeddings + classifieur) puis B (petit LLM)** et on garde le meilleur, **vitesse de réponse prioritaire** | 8 Go de RAM, faible consommation voulue ; une IA basique suffit pour choisir parmi quelques émotions (estimations non mesurées) |
 | Ordre de dev | **émotions d'abord, caméras ensuite** | pas encore de caméra stéréo, le buzzer est simple et motivant |
 | Buzzer | **passif, sur un GPIO de la Pi**, avec gpiozero | émotions dans le code haut niveau, aucun protocole intermédiaire. Limite : Linux n'est pas temps réel, un son peut hoqueter si la Pi est très chargée |
 | Sortie audio | **aucune** (buzzer seul) | choix de design, plus simple |
@@ -382,6 +392,12 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 
 - **2026-10-27 (suite 4)** — Phase 0 : clé SSH en place (connexion sans mot de passe). VS Code Remote-SSH installé et fonctionnel : `spot.local` ne se résolvait plus sur le hotspot iPhone ("Hôte inconnu"), contourné avec l'IP `172.20.10.2` (bloc `Host spot` dans `C:\Users\nomis\.ssh\config`, HostName 172.20.10.2, User simon). Dossier `/home/simon` ouvert, terminal OK (`hostname` → Spot).
 
+- **2026-10-27 (suite 5)** — Phase 2 démarrée : choix du modèle qui comprend les phrases pour déduire l'émotion. Contraintes précisées par l'utilisateur : tourner de préférence sur la **Pi 5 (8 Go)** avec une faible consommation, micro du PC au début puis micro sur la Pi, une IA basique suffit pour choisir content / triste / etc. Buzzer toujours absent : on affiche l'émotion détectée. Pistes comparées (§8, Phase 2) : embeddings + classifieur (recommandé), petit LLM (repli). **Mise à jour (suite)** : décision de tester A d'abord, puis B, et de garder le meilleur (réponse rapide prioritaire). La Pi ne servira qu'à la profondeur (2 caméras), à la parole + émotion et au buzzer, donc un modèle plus gros est envisageable. Étape en cours : définir la liste fixe des émotions.
+
+- **2026-10-27 (suite 6)** — Liste d'émotions **validée** : `content, triste, curieux, surpris, colere, peur, neutre` (`neutre` = phrases sans émotion). Création de `pi/emotions_data.py` : 20 phrases d'entraînement + 5 phrases de test par émotion (TEST ne sert qu'à mesurer, jamais à entraîner). Prochaine étape : installer `sentence-transformers` et `scikit-learn` (modèle d'embeddings téléchargé d'abord sur le PC, hotspot lent), entraîner le classifieur (piste A) et mesurer précision + temps de réponse sur la Pi.
+
+- **2026-10-27 (soir 2)** — Entraînement et validation de la Piste A (embeddings + LogisticRegression) sur la Pi 5. Résultats sur le jeu TEST (35 phrases) : précision globale 88.6 %, temps d'inférence moyen 15.9 ms par phrase. La Piste A est retenue pour sa rapidité et sa faible consommation.
+
 *(Ajouter ici une ligne par étape : date, ce qui a été fait, ce qui a marché ou non, commandes ou fichiers importants.)*
 
 ---
@@ -419,4 +435,5 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 - **Exigence de l'utilisateur pour la Phase 2** : le robot doit comprendre le **sens de phrases complexes** (ex. « mon chat est mort » → triste), pas seulement des mots-clés ni « joue triste ». Piste : transcription (Whisper/Vosk) puis classification d'émotion par petit modèle ou LLM sur le PC, sortie limitée à une liste fixe d'émotions (content, triste, curieux, surpris, colère...).
 - **Interface entre modules** : un simple mot (nom de l'émotion) transmis à `jouer(emotion)`.
 - **Consigne de l'utilisateur sur ce README** : ne pas le réécrire en entier. Modifier uniquement les parties qui changent et ajouter ici (fin du fichier) les infos importantes pour l'agent suivant.
+- **Mise à jour 2026-10-27 (soir, suite)** : la Phase 2 est en cours. **Le modèle texte → émotion doit tourner sur la Pi 5 de préférence** (et non sur le PC comme écrit plus haut), avec une faible consommation. Pistes et tableau comparatif dans §8 Phase 2 ; piste A recommandée, choix à confirmer. L'utilisateur estime qu'une IA basique suffit. Aucun code écrit pour l'instant. **Décision de l'utilisateur** : tester A puis B, garder le meilleur, vitesse prioritaire ; comparer sur le même jeu de phrases de test. **Émotions validées** : content, triste, curieux, surpris, colere, peur, neutre. Données dans `pi/emotions_data.py` (20 phrases TRAIN + 5 TEST par émotion). **Prochaine étape** : installer les outils (modèle téléchargé sur le PC puis `scp` vers la Pi), entraîner la piste A, mesurer.
 - **Mise à jour 2026-10-27 (soir)** : clé SSH et VS Code Remote-SSH faits. Se connecter avec l'alias `spot` (IP `172.20.10.2`, pas `spot.local`). Si le hotspot redémarre, l'IP peut changer : `hostname -I` sur la Pi (via Raspberry Pi Connect), puis modifier `HostName` dans `~/.ssh/config`. **Prochaine étape : dépôt Git `spot-micro`, puis `vcgencmd get_throttled`.**
