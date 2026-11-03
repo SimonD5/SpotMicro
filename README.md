@@ -3,7 +3,27 @@
 > **Ce fichier est la source de vérité du projet.** Il récapitule la config, les décisions et ce qui a été fait, pour qu'une personne ou un agent IA puisse reprendre le travail sans tout redemander.
 > **Règle : après chaque étape terminée, mettre à jour la section *Statut*, la section *Journal* et, si besoin, la section *Configuration*.**
 
-Dernière mise à jour : 2026-11-03
+Dernière mise à jour : 2026-11-04
+
+### Copie GitHub et journal du robot
+
+Ce dépôt GitHub range le code embarqué dans `robot/pi/` et `robot/teensy/`.
+Les chemins `pi/` et `teensy/` du journal ci-dessous décrivent l'installation
+historique sur la Pi. Depuis la racine de cette copie, utiliser par exemple
+`python robot/pi/emotion_server.py` ; ne pas recopier les anciennes commandes
+sans adapter leur chemin.
+
+Le dossier `pc/` contient une copie versionnée des clients. Le fichier vocal
+présent ici utilise `SpeechRecognition` et son service Google, avec accès
+Internet, alors que le journal décrit une version Vosk locale. La version Vosk
+du dossier personnel n'est pas fournie. Les validations matérielles consignées
+dans ce journal ne constituent donc pas une validation de cette copie du code.
+Le dossier personnel PC reste hors du périmètre de travail.
+
+Les poids `model_minilm/` ne sont pas fournis : il faut retrouver le modèle
+multilingue utilisé pour entraîner le classifieur avant de valider l'inférence.
+Les schémas annoncés dans `docs/` ne sont pas présents non plus ; les tableaux
+de câblage restent disponibles dans ce document.
 
 ---
 
@@ -72,6 +92,7 @@ Légende : `[x]` fait, `[~]` en cours, `[ ]` à faire, `[?]` à confirmer.
 - [ ] Phase 8 : locomotion par RL
 - [ ] Phase 9 : sécurité
 - [ ] Phase 10 : intégration, micro sur la Pi, autonomie sans PC
+- [x] Audit logiciel hors matériel (2026-11-04) : émotions/TCP, sécurité Teensy (`OE` / `FULL_OFF` / paliers 500 ms), scripts stéréo et suites `tests/` (`robot/docs/AUDIT.md`) ; non testé sur matériel réel
 
 ---
 
@@ -598,6 +619,8 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 
 - **2026-11-03 (électronique validée)** — Toute la partie électronique fonctionne (utilisateur) : alimentation, HC-SR04, PCA9685 et 12 servos. Firmwares ajoutés dans `teensy/` : `test_hcsr04`, `test_servo`, `set_all_90`, `walk_demo`, `stop_servos`. **Cartographie des 12 canaux** : AV-G 0-2, AV-D 4-6, AR-G 8-10, AR-D 12-14 (0 extrémité, 1 milieu, 2 épaule, le 4e canal de chaque groupe est libre). OE sur D2 (`LOW` = actif). **Il ne reste que l'IMU MPU6050 à tester** (puis le protocole série Pi ↔ Teensy).
 
+- **2026-11-04 (audit hors matériel)** — Corrections logicielles et tests hors matériel (`pc/`, `robot/pi/`, `robot/teensy/`, `tests/`, rapport `robot/docs/AUDIT.md`) : cadrage TCP par lignes UTF-8, sécurité `OE` sur D2 (`HIGH` immédiat, `FULL_OFF` 4096 et contrôle I2C avant `LOW`, paliers 500 ms ; recompiler les `.ino` avant usage), compteur persistant et appariement par identifiant pour la stéréo ; aucun test sur le robot réel.
+
 *(Ajouter ici une ligne par étape
 
 ---
@@ -642,4 +665,5 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 - **Alimentation et câblage, état au 2026-11-03** : **validés en fonctionnement par l'utilisateur**. Un seul convertisseur 10 A (5,55 V) pour les 12 servos, LM2596 n°1 (5,0015 V) pour la Pi, LM2596 n°2 en réserve ; Teensy alimenté et relié par l'**USB de la Pi**. Schémas en images dans `docs/` (`schema_alimentation.png`, `schema_signaux.png`, à placer par l'utilisateur) et en texte dans §5. `[?]` courant réel non mesuré au wattmètre. Ne pas recommander l'achat d'un 2e convertisseur sans mesure. Fil rouge des servos **sur le bornier du convertisseur, jamais via le V+ du PCA9685**.
 - **Teensy, état au 2026-11-03** : `/dev/ttyACM0`, `arduino-cli` + `teensy_loader_cli` fonctionnels sur la Pi. Firmwares dans `~/spot-micro/teensy/` : `i2c_scanner`, `test_hcsr04`, `test_servo`, `set_all_90`, `walk_demo`, `stop_servos`. OE sur D2 (`LOW` = actif). Cartographie des servos : voir §5 (AV-G 0-2, AV-D 4-6, AR-G 8-10, AR-D 12-14). **Prochaines étapes** : (1) tester le MPU6050 (I2C 18 / 19, `0x68`, offsets du gyroscope, filtre complémentaire ou Madgwick), (2) protocole ASCII Pi ↔ Teensy avec watchdog, (3) tester la mesure de batterie sur A0 (× 4,3).
 - **`[?]` Dépôt et dossier PC** : une version du README citait un dossier `pc/voice_client.py` dans le dépôt ; la règle de l'utilisateur reste de **ne pas transférer ni commiter** son dossier PC (`C:\Users\nomis\Documents\Spot\`). À confirmer avec lui avant de toucher à `pc/`.
+- **Audit hors matériel (2026-11-04, `robot/docs/AUDIT.md`)** : corrections et tests unitaires (`tests/test_emotion.py`, `tests/test_teensy.py`, `tests/test_stereo_pipeline.py`) intégrés hors matériel ; recompiler impérativement les sketchs `.ino` avant téléversement sur la Teensy (anciens binaires périmés) et noter que `pc/voice_client.py` versionné utilise Google `SpeechRecognition` (et non Vosk).
 - **Consigne de l'utilisateur sur ce README** : ne pas le réécrire en entier. Modifier uniquement les parties qui changent et ajouter ici (fin du fichier) les infos importantes pour l'agent suivant.

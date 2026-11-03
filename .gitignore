@@ -1,2 +1,13 @@
 pi/model_minilm/
 __pycache__/
+robot/pi/model_minilm/
+model_minilm/
+pc/model_vosk/
+.venv/
+venv/
+calib_images/
+robot/calib_images/
+robot/pi/calib_images/
+depth_preview.jpg
+rectified_test.jpg
+*.pyc

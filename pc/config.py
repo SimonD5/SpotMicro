@@ -1,3 +1,5 @@
+import os
+
 # Configuration réseau du PC vers la Raspberry Pi
-PI_IP = "10.20.30.31"
-PORT = 5005
+PI_IP = os.environ.get("SPOT_PI_IP", "192.168.1.28")
+PORT = int(os.environ.get("SPOT_PI_PORT", "5005"))

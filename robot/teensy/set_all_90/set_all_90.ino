@@ -4,6 +4,7 @@
 #define OE_PIN 2         // Broche OE sur D2 (Active-LOW)
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
+bool pwmReady = false;
 
 // Impulsions DS3218MG (50 Hz -> période de 20 000 µs)
 #define US_MIN  500   // 0°
@@ -33,13 +34,22 @@ const ServoConfig SERVOS[] = {
 const uint8_t NUM_SERVOS = sizeof(SERVOS) / sizeof(SERVOS[0]);
 
 void setServoAngle(uint8_t channel, int angle) {
+  if (channel >= 16) {
+    return;
+  }
   angle = constrain(angle, 0, 180);
   int us = map(angle, 0, 180, US_MIN, US_MAX);
+  us = constrain(us, US_MIN, US_MAX);
   int ticks = map(us, 0, 20000, 0, 4095);
   pwm.setPWM(channel, 0, ticks);
 }
 
 void setup() {
+  // 1. Maintenir OE à HIGH (sorties coupées) pendant l'initialisation
+  digitalWrite(OE_PIN, HIGH);
+  pinMode(OE_PIN, OUTPUT);
+  digitalWrite(OE_PIN, HIGH);
+
   Serial.begin(9600);
   while (!Serial && millis() < 4000);
 
@@ -47,17 +57,26 @@ void setup() {
   Serial.println(" CALAGE PROGRESSIF PAR CANAL MAPPÉ A 90° ");
   Serial.println("=========================================");
 
-  // 1. Activer le PCA9685 via OE (D2 -> LOW)
-  pinMode(OE_PIN, OUTPUT);
+  // 2. Initialiser le driver PWM et remettre les 16 canaux à 0 avant d'activer OE
+  if (!pwm.begin()) {
+    Serial.println("[ERREUR] PCA9685 indisponible, OE reste HIGH.");
+    return;
+  }
+  pwm.setPWMFreq(50);
+  delay(100);
+  for (uint8_t ch = 0; ch < 16; ch++) {
+    if (pwm.setPWM(ch, 0, 4096) != 0) {
+      Serial.println("[ERREUR] Initialisation PWM incomplete, OE reste HIGH.");
+      return;
+    }
+  }
+
+  // 3. Activer le PCA9685 via OE (D2 -> LOW)
+  pwmReady = true;
   digitalWrite(OE_PIN, LOW);
   Serial.println("[OK] OE force a LOW -> PCA9685 active.\n");
 
-  // 2. Initialiser le driver PWM
-  pwm.begin();
-  pwm.setPWMFreq(50);
-  delay(100);
-
-  // 3. Activer chaque servo un par un selon le mapping réel
+  // 4. Activer chaque servo un par un selon le mapping réel
   for (uint8_t i = 0; i < NUM_SERVOS; i++) {
     uint8_t ch = SERVOS[i].channel;
     const char* name = SERVOS[i].label;
@@ -79,5 +98,9 @@ void setup() {
 }
 
 void loop() {
+  if (!pwmReady) {
+    delay(1000);
+    return;
+  }
   delay(1000);
 }

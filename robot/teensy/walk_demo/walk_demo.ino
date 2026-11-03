@@ -4,6 +4,7 @@
 #define OE_PIN 2
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
+bool pwmReady = false;
 
 // Impulsions DS3218MG (50 Hz -> période de 20 000 µs)
 #define US_MIN  500   // 0°
@@ -20,16 +21,23 @@ const uint8_t CHANNELS[12] = {0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14};
 int currentAngles[12] = {90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90};
 
 void setServoAngle(uint8_t channel, int angle) {
+  if (channel >= 16) {
+    return;
+  }
   // Verrou de sécurité
   angle = constrain(angle, SAFETY_MIN, SAFETY_MAX);
   
   int us = map(angle, 0, 180, US_MIN, US_MAX);
+  us = constrain(us, US_MIN, US_MAX);
   int ticks = map(us, 0, 20000, 0, 4095);
   pwm.setPWM(channel, 0, ticks);
 }
 
 // Déplacement simultané et fluide des 12 servos vers des angles cibles
 void moveAllSmooth(const int targetAngles[12], int stepDelayMs = 30) {
+  if (stepDelayMs < 0) {
+    stepDelayMs = 0;
+  }
   bool moving = true;
   while (moving) {
     moving = false;
@@ -50,6 +58,11 @@ void moveAllSmooth(const int targetAngles[12], int stepDelayMs = 30) {
 }
 
 void setup() {
+  // Maintenir OE à HIGH (sorties coupées) pendant l'initialisation
+  digitalWrite(OE_PIN, HIGH);
+  pinMode(OE_PIN, OUTPUT);
+  digitalWrite(OE_PIN, HIGH);
+
   Serial.begin(9600);
   while (!Serial && millis() < 4000);
 
@@ -57,23 +70,39 @@ void setup() {
   Serial.println(" MICRO-MARCHE SECURISEE (+/- 5° MAX) ");
   Serial.println("=========================================");
 
-  // Activation du PCA9685 via OE (D2 -> LOW)
-  pinMode(OE_PIN, OUTPUT);
-  digitalWrite(OE_PIN, LOW);
-
-  pwm.begin();
+  if (!pwm.begin()) {
+    Serial.println("[ERREUR] PCA9685 indisponible, OE reste HIGH.");
+    return;
+  }
   pwm.setPWMFreq(50);
   delay(100);
+  for (uint8_t ch = 0; ch < 16; ch++) {
+    if (pwm.setPWM(ch, 0, 4096) != 0) {
+      Serial.println("[ERREUR] Initialisation PWM incomplete, OE reste HIGH.");
+      return;
+    }
+  }
 
-  // Position neutre de départ : 90° sur toutes les articulations
-  int neutral[12] = {90, 90, 90,  90, 90, 90,  90, 90, 90,  90, 90, 90};
-  moveAllSmooth(neutral, 15);
+  // Activation du PCA9685 via OE (D2 -> LOW) après remise à zéro des canaux
+  pwmReady = true;
+  digitalWrite(OE_PIN, LOW);
+
+  // Démarrage progressif : activer les 12 servos un par un à 90° (500 ms par servo)
+  for (int i = 0; i < 12; i++) {
+    currentAngles[i] = 90;
+    setServoAngle(CHANNELS[i], 90);
+    delay(500);
+  }
   
   Serial.println("[OK] Robot cale au neutre (90 degres). Attente 2s...");
   delay(2000);
 }
 
 void loop() {
+  if (!pwmReady) {
+    delay(1000);
+    return;
+  }
   int neutral[12] = {90, 90, 90,  90, 90, 90,  90, 90, 90,  90, 90, 90};
 
   // 1. Lever léger du couple diagonal 1 (Avant-Gauche + Arrière-Droit) & micro-avance (-3° pied/genou, +3° épaule)
