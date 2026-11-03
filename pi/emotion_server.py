@@ -1,22 +1,38 @@
 import json
+import os
 import socket
 import time
 from joblib import load
 from sentence_transformers import SentenceTransformer
+from emotions import play_emotion
 
-MODEL_PATH = "./model_minilm"
-CLASSIFIER_PATH = "emotion_classifier.joblib"
+# Récupération dynamique des chemins (dossier pi/ et racine du projet)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # /home/simon/spot-micro/pi
+BASE_DIR = os.path.dirname(SCRIPT_DIR)                   # /home/simon/spot-micro
+
+# Recherche de emotion_classifier.joblib dans pi/ puis à la racine
+CLASSIFIER_PATH = os.path.join(SCRIPT_DIR, "emotion_classifier.joblib")
+if not os.path.exists(CLASSIFIER_PATH):
+    CLASSIFIER_PATH = os.path.join(BASE_DIR, "emotion_classifier.joblib")
+
+# Recherche de model_minilm dans pi/, puis à la racine, sinon fallback Hugging Face
+if os.path.exists(os.path.join(SCRIPT_DIR, "model_minilm")):
+    MODEL_PATH = os.path.join(SCRIPT_DIR, "model_minilm")
+elif os.path.exists(os.path.join(BASE_DIR, "model_minilm")):
+    MODEL_PATH = os.path.join(BASE_DIR, "model_minilm")
+else:
+    MODEL_PATH = "all-MiniLM-L6-v2"
+
 HOST = "0.0.0.0"  # Écoute sur toutes les interfaces réseau
 PORT = 5005       # Port d'écoute
 
-print("1. Chargement du modèle d'émotions en mémoire...")
+print(f"1. Chargement du classifieur ({CLASSIFIER_PATH})...")
 t0 = time.time()
 embedder = SentenceTransformer(MODEL_PATH)
 classifier = load(CLASSIFIER_PATH)
 print(f"   Modèle prêt en {time.time() - t0:.2f} s.")
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# Permet de réutiliser le port immédiatement après l'arrêt
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.bind((HOST, PORT))
 server_socket.listen(5)
@@ -47,7 +63,11 @@ try:
             elapsed_ms = (time.time() - t_start) * 1000
 
             print(f"  ➜ Reçu : '{text}'")
-            print(f"  ➜ Émotion : [{emotion.upper()}] ({confidence:.1f}%) en {elapsed_ms:.1f} ms\n")
+            print(f"  ➜ Émotion : [{emotion.upper()}] ({confidence:.1f}%) en {elapsed_ms:.1f} ms")
+
+            # Réaction sonore R2-D2 via le buzzer (choisi une des 5 variations au hasard)
+            play_emotion(emotion)
+            print()
 
             # Réponse JSON envoyée au client
             response = {
