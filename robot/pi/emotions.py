@@ -1,7 +1,10 @@
 import random
 import sys
 import time
-from gpiozero import PWMOutputDevice
+try:
+  from gpiozero import PWMOutputDevice
+except ImportError:
+  PWMOutputDevice = None
 
 # Pin GPIO connecté au buzzer passif (GPIO 18 = Broche physique 12)
 BUZZER_PIN = 18
@@ -13,7 +16,7 @@ BUZZER_PIN = 18
 DEFAULT_VOLUME = 0.05
 
 try:
-  buzzer = PWMOutputDevice(BUZZER_PIN)
+  buzzer = PWMOutputDevice(BUZZER_PIN) if PWMOutputDevice is not None else None
 except Exception:
   buzzer = None  # Mode simulation si exécuté hors de la Pi
 
