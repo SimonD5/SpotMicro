@@ -7,3 +7,9 @@ calib_images/
 pc/model_vosk/
 pc/model_minilm/
 robot/pi/model_minilm/
+model_minilm/
+.venv/
+robot/calib_images/
+robot/pi/calib_images/
+depth_preview.jpg
+rectified_test.jpg
