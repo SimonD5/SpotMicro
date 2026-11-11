@@ -1,6 +1,9 @@
-pi/model_minilm/
-__pycache__/
-pc/model_vosk/
-pc/model_minilm/
 __pycache__/
 *.pyc
+*.pt
+*.jpg
+venv/
+calib_images/
+pc/model_vosk/
+pc/model_minilm/
+robot/pi/model_minilm/
