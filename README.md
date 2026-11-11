@@ -3,7 +3,7 @@
 > **Ce fichier est la source de vérité du projet.** Il récapitule la config, les décisions et ce qui a été fait, pour qu'une personne ou un agent IA puisse reprendre le travail sans tout redemander.
 > **Règle : après chaque étape terminée, mettre à jour la section *Statut*, la section *Journal* et, si besoin, la section *Configuration*.**
 
-Dernière mise à jour : 2026-11-03
+Dernière mise à jour : 2026-11-11
 
 ---
 
@@ -47,7 +47,7 @@ Légende : `[x]` fait, `[~]` en cours, `[ ]` à faire, `[?]` à confirmer.
   - [x] 2c : client vocal PC `voice_client.py` (Vosk `vosk-model-small-fr-0.22` + `sounddevice`), configuration IP centralisée dans `config.py` (côté PC)
 - [x] Phase 3 : caméra n°1 (terminée le 2026-10-31) : WPI408 / OV5647 fonctionnelle sur `CAM0`, tests CLI et Python OK, streaming Web Flask (port 8080) + détection d'objets **YOLOv8s**
 - [x] **Phase 4 : alimentation et électronique du robot, validée en fonctionnement le 2026-11-03** (convertisseur 10 A à 5,55 V pour les 12 servos, LM2596 n°1 à 5,0 V pour la Pi, schémas en §5) ; `[?]` mesure du courant réel au wattmètre non notée
-- [~] **Phase 5 : Teensy (servos, IMU, ultrason) + liaison Pi ↔ Teensy (en cours : tout est validé sauf l'IMU et le protocole série, 2026-11-03)**
+- [~] **Phase 5 : Teensy (servos, IMU, ultrason) + liaison Pi ↔ Teensy (en cours : électronique et IMU lus, reste le filtrage IMU et le protocole série, 2026-11-11)**
   - [x] 5a : Teensy 4.0 branchée en USB sur la Pi, vue sur `/dev/ttyACM0` (`ID 16c0:0483`)
   - [x] 5b : chaîne de compilation en ligne de commande sur la Pi : `arduino-cli` + `teensy_loader_cli` + règles udev PJRC
   - [x] 5c : premier firmware `teensy/i2c_scanner/i2c_scanner.ino` compilé et téléversé depuis la Pi
@@ -60,7 +60,8 @@ Légende : `[x]` fait, `[~]` en cours, `[ ]` à faire, `[?]` à confirmer.
     - démarrage séquentiel des 12 servos à 90°, 500 ms par servo (`teensy/set_all_90/set_all_90.ino`)
     - micro-marche diagonale bridée à ±5° (`teensy/walk_demo/walk_demo.ino`)
     - mise en sécurité, coupure des sorties PWM (`teensy/stop_servos/stop_servos.ino`)
-  - [ ] 5g : **IMU MPU6050** : seul composant restant à tester (I2C pin 18 / 19, 3,3 V, adresse `0x68`)
+  - [x] 5g : **IMU MPU6050 détecté à `0x68` et lu** (2026-11-11) : pitch, roll, température, gyro Z cohérents au repos et au mouvement (détail, trame et conventions d'axes en §5, « IMU MPU6050 »). **Module monté à l'envers** (Z vers le bas) : roll corrigé = roll + 180°
+  - [ ] 5g-bis : calibration des offsets (gyro, pitch, roll) au démarrage et **filtre complémentaire ou Madgwick** (pas encore fait)
   - [ ] 5h : protocole série ASCII Pi ↔ Teensy sur `/dev/ttyACM0` avec watchdog
 - [~] Phase 6 : 2e caméra et profondeur stéréo
   - [x] 6a : outil de dimensionnement `stereo_planner.py` (PC) terminé le 2026-10-31
@@ -84,7 +85,7 @@ Légende : `[x]` fait, `[~]` en cours, `[ ]` à faire, `[?]` à confirmer.
 | Buzzer | **passif**, branché sur le **GPIO 18 (broche 12)** de la **Pi** + GND (broche 14), pas sur le Teensy | possédé et fonctionnel |
 | Sortie audio (haut-parleur) | **non utilisée**, seul le buzzer s'exprime | abandonnée |
 | Micro | **micro du PC** au départ, micro sur la Pi à terme (USB ou I2S) | micro du PC utilisé ; micro de la Pi à acheter plus tard |
-| IMU | **MPU6050** (module GY-521) sur le **Teensy**, I2C | en attente de livraison (broches à souder) |
+| IMU | **MPU6050** (module GY-521) sur le **Teensy**, I2C | soudé, **détecté à `0x68` et lu correctement le 2026-11-11** (monté à l'envers, voir §5) |
 | Contrôleur de servos | **PCA9685** (16 canaux, I2C `0x40`, **OE sur D2**) | possédé, détecté et fonctionnel |
 | Servos | **DS3218MG** × 12 : numérique, engrenages métal, **4,8 à 6,8 V**, couple 19 kg·cm à 5 V, courant à l'arrêt (rotor bloqué) 1,8 à 2,6 A, impulsions 500-2500 µs (neutre 1500 µs) | possédés, **12 canaux configurés et testés** (2026-11-03) |
 | Batterie | **LiPo 3S** (11,1 V nominal, 12,6 V pleine charge) | possédée |
@@ -194,13 +195,13 @@ Points d'attention : le **V+ du PCA9685 reste non connecté** (les fils rouges d
 | TRIG | Teensy D3 | HC-SR04 TRIG |
 | ECHO | HC-SR04 ECHO → 1 kΩ → Teensy D4 (2,2 kΩ de D4 vers GND, soudé : environ 3,4 V) | |
 | Tension batterie | rail + → 33 kΩ → Teensy A0 (10 kΩ de A0 vers GND) | 12,6 V → environ 2,93 V ; batterie = tension lue × 4,3 |
-| I2C | Teensy pin 18 (SDA), pin 19 (SCL), 3,3 V, GND | PCA9685 (`0x40`) et MPU6050 (`0x68`, AD0 au GND) |
+| I2C | Teensy pin 18 (SDA), pin 19 (SCL), 3,3 V, GND | PCA9685 (`0x40`) et MPU6050 (`0x68` ; AD0 et INT laissés non connectés au 2026-11-10, `[?]` état actuel d'AD0 non noté) |
 | Coupure servos | Teensy D2 | PCA9685 OE, **actif à l'état bas** : `LOW` = sorties activées, `HIGH` = toutes les sorties servos coupées (validé le 2026-11-03) |
 | Servos | PCA9685 canaux 0-2 AV-G, 4-6 AV-D, 8-10 AR-G, 12-14 AR-D (voir « Cartographie des 12 servos ») | signal + GND seulement ; rouges sur le bornier du 10 A |
 | Caméras | CAM0 = WPI408, CAM1 = OV5647 | Pi 5 |
 | Pi ↔ Teensy | câble USB (5 V + données) | **décision 2026-11-02 : on garde l'USB** (pas de VIN ni d'UART) |
 
-Brochage **validé en fonctionnement le 2026-11-03** pour D2 (OE), D3 (TRIG), D4 (ECHO), I2C 18 / 19 ; **A0 (tension batterie) et le MPU6050 restent à tester**.
+Brochage **validé en fonctionnement le 2026-11-03** pour D2 (OE), D3 (TRIG), D4 (ECHO), I2C 18 / 19, et **le 2026-11-11 pour le MPU6050 (`0x68`, lecture OK sur le bus partagé avec le PCA9685)** ; **A0 (tension batterie) reste à tester**.
 
 ### Cartographie des 12 servos (PCA9685, validée le 2026-11-03)
 Un groupe de 4 canaux = une patte. Dans chaque groupe : **canal 0 = extrémité de la patte, canal 1 = milieu, canal 2 = épaule**, le canal 3 du groupe est **libre**. Gauche et droite sont vues **de dessus, dans le sens de marche du robot**.
@@ -211,6 +212,57 @@ Un groupe de 4 canaux = une patte. Dans chaque groupe : **canal 0 = extrémité 
 | Arrière gauche (AR-G) | CH 8 | CH 9 | CH 10 | CH 11 |
 | Arrière droite (AR-D) | CH 12 | CH 13 | CH 14 | CH 15 |
 Libellés de l'ancienne version du README : extrémité = « Pied », milieu = « Genou », épaule = « Épaule ». Même convention, noms différents : à l'extrémité de la patte se trouve l'articulation du genou. Pour l'URDF et le RL, garder cette table comme référence.
+
+### Amplitudes de débattement des servos (mesurées par l'utilisateur, 2026-11-11)
+Source : tableau `Amplitude.xlsx` de l'utilisateur. Valeurs en **degrés de consigne servo (0-180°)** `[?]` (l'unité n'est pas écrite dans le fichier, à confirmer).
+| Canal | Patte | Rôle | Avant / extérieur | Démarrage | Centre | Arrière / intérieur |
+|---|---|---|---|---|---|---|
+| 0 | AV-G | extrémité | 45 | 50 | 90 | 135 |
+| 1 | AV-G | milieu | 45 | 80 | 90 | 115 |
+| 2 | AV-G | épaule | 45 | 85 | 93 | 95 |
+| 4 | AV-D | extrémité | 135 | 130 | 90 | 45 |
+| 5 | AV-D | milieu | 135 | 100 | 90 | 65 |
+| 6 | AV-D | épaule | 135 | 95 | 87 | 85 |
+| 8 | AR-G | extrémité | 45 | 50 | 90 | 135 |
+| 9 | AR-G | milieu | 45 | 80 | 90 | 135 |
+| 10 | AR-G | épaule | 45 | 85 | 93 | 95 |
+| 12 | AR-D | extrémité | 135 | 130 | 90 | 45 |
+| 13 | AR-D | milieu | 135 | 100 | 90 | 45 |
+| 14 | AR-D | épaule | 135 | 95 | 87 | 85 |
+
+- **Lecture des colonnes** `[?]` (interprétation, à confirmer) : « Avant / extérieur » = butée côté avant (extrémité, milieu) ou côté extérieur (épaule) ; « Arrière / intérieur » = butée opposée ; « Démarrage » = position de départ (posture initiale) ; « Centre » = position neutre.
+- **Symétrie miroir vérifiée sur les 12 lignes : droite = 180° − gauche** (ex. canal 4 = 180° − canal 0).
+- **Épaules : centre à 93° à gauche et 87° à droite** (pas 90°), soit un décalage de zéro de ±3°. Débattement d'épaule d'environ 50° seulement (45 → 95° à gauche, 135 → 85° à droite).
+- **Extrémité (genou)** : 45 → 135°, soit 90° sur les 4 pattes. **Milieu (cuisse)** : butée arrière à 115° (G) / 65° (D) aux pattes **avant**, contre 135° (G) / 45° (D) aux pattes **arrière** (constat, cause non précisée).
+- **Position de démarrage ≠ 90°** (extrémité 50 / 130, milieu 80 / 100, épaule 85 / 95). Le firmware `set_all_90` cale tout à 90°, donc les épaules à 90° au lieu de 93° / 87° (écart de 3°).
+- **Usage proposé** `[?]` : ces valeurs servent de **limites logicielles** (clamp) dans le firmware, de limites d'articulations pour l'URDF et la simulation RL, et de base aux décalages de zéro (§8 phase 8, étape 6).
+
+### IMU MPU6050 : résultats de test et conventions d'axes (2026-11-11)
+**Firmware de test** (dossier proposé `teensy/test_mpu6050/` `[?]` nom à confirmer) : `Wire` (SDA 18 / SCL 19) à 400 kHz, sortie de veille par `PWR_MGMT_1` (registre `0x6B`) = `0x00`, puis lecture groupée de 14 octets à partir de `ACCEL_XOUT_H` (`0x3B`) : accéléromètre (6 octets), température (2), gyroscope (6). Plages par défaut : **±2 g (16384 LSB/g)** et **±250 °/s (131 LSB par °/s)**. Calculs : `roll = atan2(ay, az)`, `pitch = atan2(−ax, √(ay² + az²))`, `température = brut / 340 + 36,53` (température de la **puce**, pas de l'air). Affichage à 10 Hz ; seul **Gyro Z** est affiché (gx et gy sont lus mais pas affichés).
+
+**Trame au repos** (29 lignes collées par l'utilisateur, statistiques calculées sur ces lignes) :
+| Grandeur | Plage | Moyenne | Écart-type |
+|---|---|---|---|
+| Pitch | 0,1 à 1,0° | 0,47° | 0,21° |
+| Roll | −176,2 à −175,5° | −175,82° | 0,17° |
+| Température puce | 20,2 à 20,5 °C | 20,35 °C | 0,06 °C |
+| Gyro Z | −0,2 à +0,1 °/s | −0,03 °/s | 0,09 °/s |
+
+Mesure faite **robot droit sur une table** (confirmé par l'utilisateur). Le roll corrigé de +4,2° vient donc d'un défaut de montage du module sur le robot (ou d'une table non plane) : à remesurer si le module est déplacé ou ressoudé.
+
+**Sens observés par l'utilisateur en bougeant le module** :
+- **Gyro Z** varie quand on tourne à droite / gauche, **Z augmente en tournant vers la droite**.
+- **Pitch augmente** quand le robot **regarde vers le haut**, diminue vers le bas.
+- **Roll se rapproche de 0 (il augmente)** quand la **droite du robot monte**.
+
+**Interprétation (déduite, à confirmer par lecture brute de ax, ay, az)** : le module est monté **à l'envers**, **Z vers le bas, X vers l'arrière, Y vers la gauche** du robot (rotation de 180° autour de l'axe gauche-droite). Une petite simulation de ce montage reproduit exactement les trois sens observés (le montage « X avant, Y droite, Z bas » donnerait un pitch et un roll de sens inverse). Le gyro Z positif vers la droite est aussi cohérent avec un Z vers le bas (avec un Z vers le haut, une rotation à droite donnerait un Z négatif).
+
+**Conséquences pour le code** :
+- **Roll corrigé = roll + 180°**, ramené dans ±180° : environ **+4,2°** au repos dans la mesure ci-dessus, et il **augmente quand la droite monte**. Sans correction, le roll brut est proche de ±180° et **saute de −180° à +180°** au passage de la limite.
+- **Pitch** : utilisable tel quel (+ = nez vers le haut), offset de repos mesuré d'environ +0,5°.
+- **Gyro Z** : + = rotation vers la droite (sens horaire vu de dessus), **opposé à la convention habituelle**. Les signes de gx et gy n'ont pas été vérifiés : les contrôler par un test de rotation avant de les utiliser dans le filtre.
+- Offsets à soustraire au démarrage, robot à plat et immobile (gyro, pitch, roll) ; bruit sans filtre à 10 Hz d'environ ±0,2° (mesuré), le filtre servira surtout à la dynamique et aux vibrations de la marche.
+- **Cause de la non-détection initiale du 2026-11-10** (le scan ne voyait que le PCA9685) : **mauvaises soudures** sur le module, corrigées par l'utilisateur.
 
 ### Conversions de tension : ce qui est nécessaire et ce qui ne l'est pas
 - **5 V → 3,3 V pour le Teensy : aucun convertisseur à ajouter.** Le Teensy 4.0 a son régulateur 3,3 V intégré. Il peut être alimenté en 5 V par le câble USB de la Pi. Sa broche **3,3 V** sert ensuite à alimenter les petits modules 3,3 V (MPU6050, côté logique du PCA9685).
@@ -320,7 +372,8 @@ spot-micro/
 │   ├── test_servo/               ← balayage lent du canal 0, gestion de OE (D2)
 │   ├── set_all_90/               ← calage progressif des 12 servos à 90° (500 ms par servo)
 │   ├── walk_demo/                ← micro-marche diagonale bridée à ±5°
-│   └── stop_servos/              ← mise en sécurité (OE → HIGH, PWM coupée)
+│   ├── stop_servos/              ← mise en sécurité (OE → HIGH, PWM coupée)
+│   └── test_mpu6050/             ← lecture brute du MPU6050 (pitch, roll, température, gyro Z), nom du dossier `[?]` à confirmer
 ├── docs/                         ← schémas de câblage, notes de calibration, photos
 └── hardware/                     ← CAO, URDF (masses des composants à jour)
 ```
@@ -420,9 +473,9 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 
 ### Phase 5 — Teensy : servos, IMU, ultrason + liaison Pi ↔ Teensy [en cours]
 **Objectif** : un firmware qui commande les servos, lit les capteurs et parle à la Pi.
-**État au 2026-11-03** : chaîne `arduino-cli` + `teensy_loader_cli` opérationnelle sur la Pi ; PCA9685 (`0x40`), HC-SR04 et **12 servos validés** (démarrage séquentiel à 90°, micro-marche à ±5°, coupure par OE sur D2). **Reste** : l'**IMU MPU6050** (étape 5g), puis le **protocole série Pi ↔ Teensy avec watchdog** (5h). Les firmwares de test sont dans `teensy/` (voir §7).
+**État au 2026-11-11** : chaîne `arduino-cli` + `teensy_loader_cli` opérationnelle sur la Pi ; PCA9685 (`0x40`), HC-SR04, **12 servos** et **lecture du MPU6050 (`0x68`)** validés. **Reste** : calibration et filtre de l'IMU (5g-bis), puis le **protocole série Pi ↔ Teensy avec watchdog** (5h). Les firmwares de test sont dans `teensy/` (voir §7).
 1. **PCA9685** : VCC en 3,3 V depuis le Teensy, **V+ non connecté** (fils rouges des servos directement sur le convertisseur 5,5 V). Tester **un seul servo** avec la bibliothèque PCA9685 (Adafruit), pulses 500 à 2500 µs, 50 Hz.
-2. **MPU6050** : I2C (SDA 18 / SCL 19), alimenté en 3,3 V. Calibrer les offsets du gyroscope au démarrage, appliquer un **filtre complémentaire ou Madgwick** pour obtenir roll et pitch. Pas de magnétomètre : le **yaw dérive**, ce qui n'est pas gênant pour tenir l'équilibre.
+2. **MPU6050** : I2C (SDA 18 / SCL 19), alimenté en 3,3 V, **lecture validée le 2026-11-11** (module monté à l'envers : roll corrigé = roll + 180°, voir §5). **À faire** : calibrer les offsets du gyroscope au démarrage, appliquer un **filtre complémentaire ou Madgwick** pour obtenir roll et pitch. Pas de magnétomètre : le **yaw dérive**, ce qui n'est pas gênant pour tenir l'équilibre.
 3. **HC-SR04** : alimenté en 5 V, TRIG en sortie, **ECHO via diviseur 1 kΩ / 2,2 kΩ** (§5).
 4. Liaison série USB avec la Pi (`/dev/ttyACM0`, `pip install pyserial`) et **protocole simple** documenté dans `docs/protocole.md` (lignes ASCII au départ : commandes Pi → Teensy, mesures IMU et distance Teensy → Pi).
 5. **Watchdog** : sans message de la Pi pendant X ms, retour à un état sûr.
@@ -465,7 +518,7 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 5. Déploiement, au choix :
    - **Sur la Pi** : export ONNX + ONNX Runtime, envoi des angles cibles au Teensy.
    - **Sur le Teensy** : poids exportés en tableaux C + petite multiplication de matrices (réseau de 2-3 couches de ~128 neurones).
-6. Calibrer : décalages de zéro des servos, sens de rotation, repère de l'IMU (MPU6050).
+6. Calibrer : décalages de zéro des servos (épaules à 93° / 87°), sens de rotation, **repère de l'IMU** (MPU6050 à l'envers, conventions en §5). Limites d'articulations : tableau « Amplitudes de débattement » en §5.
 - **Validation** : marche stable en simulation, puis sur support, puis au sol sur surface plane.
 
 ### Phase 9 — Sécurité
@@ -511,6 +564,8 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 | Mise en route des servos | **démarrage séquentiel à 90°, 500 ms par servo** (`set_all_90`), mouvements **bridés à ±5°** pour les premiers essais (`walk_demo`) | limite l'appel de courant sur le convertisseur 10 A et évite les mouvements brusques |
 | Coupure des servos | **OE du PCA9685 sur D2, actif à l'état bas** ; `stop_servos` met OE à `HIGH` | le Teensy peut couper toutes les sorties sans passer par la Pi |
 | Cartographie des servos | **4 canaux par patte** : 0 extrémité, 1 milieu, 2 épaule, 3 libre ; AV-G 0-2, AV-D 4-6, AR-G 8-10, AR-D 12-14 | une patte = un groupe de canaux, gauche / droite vues de dessus dans le sens de marche |
+| Limites des servos | **tableau d'amplitudes mesuré par l'utilisateur** (§5), symétrie miroir droite = 180° − gauche, épaules centrées à 93° (G) / 87° (D) | butées réelles du châssis ; base des limites logicielles, de l'URDF et des décalages de zéro (2026-11-11) |
+| Repère de l'IMU | **MPU6050 monté à l'envers** (Z vers le bas), **roll corrigé = roll + 180°**, pitch + = nez haut, gyro Z + = tourne à droite | déduit des sens observés le 2026-11-11 ; à garder dans le firmware plutôt que de remonter le module (déjà soudé) `[?]` |
 | Boucle de marche | sur le robot (Teensy ou Pi) | ne doit pas dépendre du wifi |
 | Écart des caméras | **$B = 50\text{ mm}$ entre axes optiques, retenu et installé** (avant : ≈ 47 mm estimé d'après le croquis Onshape, ouverture ≈ 71 × 53 mm, caméras 23 × 23 mm) | l'erreur de distance varie en 1/écart : plage utile théorique 0.48 m à 3.0 m à 640×480 avec le HFOV mesuré de 55.4° (calcul, erreur de corrélation supposée 1 px). Le HC-SR04 (45 × 20 mm) ne tient pas entre les caméras (vide central ≈ 24 mm) : le placer **au-dessus ou en dessous** |
 | Inclinaison des caméras | **0° (parallèles), installé** ; ancienne idée : 10-20° chacune | `stereoRectify` rend la disparité (d = f·B/Z) indépendante de l'inclinaison : elle n'apporte **aucune précision**, et réduit le champ commun de la somme des deux angles (10° chacune avec 54° : 34° au lieu de 54°). Elle ne gagne presque pas de place non plus (23 mm → 22,5 mm à 10°). À rediscuter seulement si le champ réel est très large (> 90°) |
@@ -549,6 +604,8 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 - **Condensateur des servos** : respecter la polarité (la bande marque le −), tension nominale ≥ 10 V.
 - **OE du PCA9685 actif à l'état bas** : le Teensy doit forcer D2 à `LOW` pour activer les sorties et à `HIGH` pour les couper. Ne pas inverser la logique dans le firmware.
 - **Mouvements de servos** : premiers essais **bridés (±5°)**, robot sur support, servos démarrés un par un. Ne jamais bloquer un servo (voir §5).
+- **MPU6050 monté à l'envers** : le roll brut vaut environ ±180° au repos et **saute de signe** à la limite ; utiliser `roll + 180°` ramené dans ±180°. Le gyro Z est de signe opposé à la convention habituelle (+ = à droite). Ne pas appliquer un filtre ou un contrôle d'équilibre avec le repère brut.
+- **Butées des servos** : ne pas dépasser les amplitudes du tableau du §5 (épaules limitées à environ 50°, butées arrière de cuisse différentes entre pattes avant et arrière). `set_all_90` ne tient pas compte du centre d'épaule à 93° / 87°.
 - **Masse du robot** : mettre à jour le URDF dès qu'un composant est ajouté, sinon la marche apprise sera décalée.
 - **Buzzer sur Pi** : si le son est instable, utiliser le PWM matériel.
 
@@ -598,6 +655,10 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 
 - **2026-11-03 (électronique validée)** — Toute la partie électronique fonctionne (utilisateur) : alimentation, HC-SR04, PCA9685 et 12 servos. Firmwares ajoutés dans `teensy/` : `test_hcsr04`, `test_servo`, `set_all_90`, `walk_demo`, `stop_servos`. **Cartographie des 12 canaux** : AV-G 0-2, AV-D 4-6, AR-G 8-10, AR-D 12-14 (0 extrémité, 1 milieu, 2 épaule, le 4e canal de chaque groupe est libre). OE sur D2 (`LOW` = actif). **Il ne reste que l'IMU MPU6050 à tester** (puis le protocole série Pi ↔ Teensy).
 
+- **2026-11-10 (IMU)** — MPU6050 non détecté au scan I2C (seul le PCA9685 répondait, AD0 et INT laissés en l'air) ; cause trouvée : mauvaises soudures. Question : le garder sur le Teensy ou le passer sur la Pi 5 ; le firmware de test final tourne sur le Teensy. Brochage pin par pin du module vers le Teensy redonné (SDA 18, SCL 19, 3,3 V, GND).
+
+- **2026-11-11 (IMU validé, amplitudes des servos)** — Le MPU6050 répond à `0x68` et le firmware de test affiche pitch, roll, température et gyro Z. Trame au repos : pitch ≈ +0,5°, roll ≈ −175,8°, température puce ≈ 20,4 °C, gyro Z ≈ 0 °/s. Sens observés : gyro Z + vers la droite, pitch + vers le haut, roll qui augmente quand la droite monte, donc **module monté à l'envers** (déduit). Tableau d'amplitudes des 12 servos ajouté (§5).
+
 *(Ajouter ici une ligne par étape
 
 ---
@@ -628,18 +689,20 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 
 ---
 
-## 14. Notes pour le prochain agent IA (à jour au 2026-11-03)
+## 14. Notes pour le prochain agent IA (à jour au 2026-11-11)
 
 - **Utilisateur** : Simon, PC **Windows** (PowerShell), débutant sur Linux/Pi : commandes courtes à copier ; **il accepte plusieurs étapes à la fois, mais toujours détaillées** ; lui demander le résultat exact avant de continuer.
 - **Réseau** : la Pi est sur le Wi-Fi principal (`Livebox-63C0` / `Danielandjacobs`, priorité 20), IP `192.168.1.28` (2026-11-01) ; hotspot iPhone en secours (IP vue le 2026-10-27 : `172.20.10.2`, `spot.local` ne s'y résolvait pas). Si l'IP change : `hostname -I` (via Raspberry Pi Connect si besoin), puis `HostName` dans `C:\Users\nomis\.ssh\config` et `PI_IP` dans `Spot\config.py`. Le hotspot iPhone est lent (~7 Ko/s vers certains dépôts).
-- **Situation** : **Phases 0, 1, 2, 3 et 4 terminées** ; **phase 5 en cours** : PCA9685, HC-SR04 et **12 servos validés**, il reste l'**IMU MPU6050** (5g) et le protocole série Pi ↔ Teensy avec watchdog (5h) ; **phase 6 en cours** (6d : calibration, ≥ 12 paires `[VALIDE]`). Voir §2. Le robot entend (micro du PC + Vosk), classe l'émotion (Pi 5) et s'exprime sur le buzzer (35 sons R2-D2, 5 %). Streaming vidéo + YOLOv8s sur le port 8080. `[?]` `vcgencmd get_throttled` à vérifier ; `[?]` lancement permanent du serveur (`systemd` prévu en phase 10).
-- **Matériel manquant** : un micro pour la Pi (plus tard) et le **MPU6050** (seul composant électronique encore à tester). Tout le reste est en place et fonctionne : Pi 5, Teensy 4.0, PCA9685, 12 servos DS3218MG, HC-SR04, buzzer, deux caméras OV5647, LiPo, convertisseur 10 A et 2 LM2596 (pas d'autre convertisseur prévu).
+- **Situation** : **Phases 0, 1, 2, 3 et 4 terminées** ; **phase 5 en cours** : PCA9685, HC-SR04, **12 servos** et **lecture du MPU6050** validés, il reste la calibration et le filtre de l'IMU (5g-bis) et le protocole série Pi ↔ Teensy avec watchdog (5h) ; **phase 6 en cours** (6d : calibration, ≥ 12 paires `[VALIDE]`). Voir §2. Le robot entend (micro du PC + Vosk), classe l'émotion (Pi 5) et s'exprime sur le buzzer (35 sons R2-D2, 5 %). Streaming vidéo + YOLOv8s sur le port 8080. `[?]` `vcgencmd get_throttled` à vérifier ; `[?]` lancement permanent du serveur (`systemd` prévu en phase 10).
+- **Matériel manquant** : un micro pour la Pi (plus tard). Tout le reste est en place et fonctionne : Pi 5, Teensy 4.0, PCA9685, 12 servos DS3218MG, HC-SR04, buzzer, MPU6050, deux caméras OV5647, LiPo, convertisseur 10 A et 2 LM2596 (pas d'autre convertisseur prévu).
 - **Ordre de développement** : phase 2 avant la phase 1 (faute de buzzer), puis caméra (phase 3), stéréo (phase 6), buzzer et boucle vocale complète (phase 1, 2026-11-02), puis Teensy (phase 5). **Objectif immédiat** : voir les lignes Teensy et Stéréo. Ensuite au choix : montage de l'alimentation (phase 4) avec mesure au wattmètre, ou **Phase 7** (suivi de personne, YOLOv8s + profondeur).
 - **Phase 2, limites connues** : 88.6 % de précision sur 35 phrases (4 erreurs), piste B non testée. Pour améliorer : enrichir `pi/emotions_data.py` (phrases d'entraînement) avant de changer de modèle.
 - **Interface entre modules** : le serveur renvoie le nom de l'émotion (un mot de la liste `content, triste, curieux, surpris, colere, peur, neutre`) en JSON ; `jouer(emotion)` le recevra.
 - **Code PC** : l'utilisateur gère son dossier `C:\Users\nomis\Documents\Spot\` lui-même, hors dépôt Git. **Ne pas tenter de le commiter ou de le transférer depuis la Pi.**
 - **Stéréo, état au 2026-11-01** : caméras gauche (`CAM0`) et droite (`CAM1`) fonctionnelles, HFOV mesuré 55.4°, support B = 50 mm à 0°. Scripts prêts dans `pi/` : `stream_dual.py`, `capture_calibration.py`, `calibrate_stereo.py`, `test_depth.py`. **Objectif immédiat** : relancer `python pi/capture_calibration.py` pour accumuler 12 à 15 paires marquées `[VALIDE]` (damier asymétrique 8×7 coins à l'écran, écran plat, inclinaison < 25°, distances 40 cm à 1,2 m, éviter les reflets), puis `python pi/calibrate_stereo.py` pour que la baseline calculée se fixe sur 50 mm, puis `python pi/test_depth.py` pour valider la carte de profondeur (test à 0,5 / 1 / 1,5 / 2 m). Les valeurs de `stereo_planner.py` reposent sur une **erreur de corrélation supposée de 1 px**, à remplacer par la valeur mesurée après calibration. Les scripts `pi/` se lancent sur la Pi dans `~/venv`.
 - **Alimentation et câblage, état au 2026-11-03** : **validés en fonctionnement par l'utilisateur**. Un seul convertisseur 10 A (5,55 V) pour les 12 servos, LM2596 n°1 (5,0015 V) pour la Pi, LM2596 n°2 en réserve ; Teensy alimenté et relié par l'**USB de la Pi**. Schémas en images dans `docs/` (`schema_alimentation.png`, `schema_signaux.png`, à placer par l'utilisateur) et en texte dans §5. `[?]` courant réel non mesuré au wattmètre. Ne pas recommander l'achat d'un 2e convertisseur sans mesure. Fil rouge des servos **sur le bornier du convertisseur, jamais via le V+ du PCA9685**.
-- **Teensy, état au 2026-11-03** : `/dev/ttyACM0`, `arduino-cli` + `teensy_loader_cli` fonctionnels sur la Pi. Firmwares dans `~/spot-micro/teensy/` : `i2c_scanner`, `test_hcsr04`, `test_servo`, `set_all_90`, `walk_demo`, `stop_servos`. OE sur D2 (`LOW` = actif). Cartographie des servos : voir §5 (AV-G 0-2, AV-D 4-6, AR-G 8-10, AR-D 12-14). **Prochaines étapes** : (1) tester le MPU6050 (I2C 18 / 19, `0x68`, offsets du gyroscope, filtre complémentaire ou Madgwick), (2) protocole ASCII Pi ↔ Teensy avec watchdog, (3) tester la mesure de batterie sur A0 (× 4,3).
+- **Teensy, état au 2026-11-11** : `/dev/ttyACM0`, `arduino-cli` + `teensy_loader_cli` fonctionnels sur la Pi. Firmwares dans `~/spot-micro/teensy/` : `i2c_scanner`, `test_hcsr04`, `test_servo`, `set_all_90`, `walk_demo`, `stop_servos`, et le test MPU6050 (`[?]` nom du dossier). OE sur D2 (`LOW` = actif). Cartographie des servos : voir §5 (AV-G 0-2, AV-D 4-6, AR-G 8-10, AR-D 12-14). **Prochaines étapes** : (1) calibrer l'IMU et filtrer (complémentaire ou Madgwick), (2) protocole ASCII Pi ↔ Teensy avec watchdog, (3) tester la mesure de batterie sur A0 (× 4,3).
+- **IMU, repère à respecter (2026-11-11)** : MPU6050 **monté à l'envers** (Z vers le bas, déduit des sens observés). **Roll corrigé = roll + 180°** (ramené dans ±180°), pitch + = nez vers le haut, gyro Z + = rotation vers la droite. Valeurs de repos mesurées : pitch ≈ +0,5°, roll corrigé ≈ +4,2°, gyro Z ≈ −0,03 °/s (mesurés robot droit sur une table). Détail et trame en §5. Les signes de gx et gy ne sont pas encore vérifiés.
+- **Amplitudes des servos (2026-11-11)** : tableau mesuré par l'utilisateur en §5 (symétrie droite = 180° − gauche, épaules centrées à 93° / 87°). À utiliser comme limites d'articulations.
 - **`[?]` Dépôt et dossier PC** : une version du README citait un dossier `pc/voice_client.py` dans le dépôt ; la règle de l'utilisateur reste de **ne pas transférer ni commiter** son dossier PC (`C:\Users\nomis\Documents\Spot\`). À confirmer avec lui avant de toucher à `pc/`.
 - **Consigne de l'utilisateur sur ce README** : ne pas le réécrire en entier. Modifier uniquement les parties qui changent et ajouter ici (fin du fichier) les infos importantes pour l'agent suivant.
