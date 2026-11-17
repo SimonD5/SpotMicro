@@ -3,9 +3,35 @@
 > **Ce fichier est la source de vérité du projet.** Il récapitule la config, les décisions et ce qui a été fait, pour qu'une personne ou un agent IA puisse reprendre le travail sans tout redemander.
 > **Règle : après chaque étape terminée, mettre à jour la section *Statut*, la section *Journal* et, si besoin, la section *Configuration*.**
 
-Dernière mise à jour : 2026-11-11
+Dernière mise à jour : 2026-11-17
+
+### Copie GitHub et journal du robot
+
+Ce dépôt GitHub range le code embarqué dans `robot/pi/` et `robot/teensy/`.
+Les chemins `pi/` et `teensy/` du journal ci-dessous décrivent l'installation
+historique sur la Pi. Depuis la racine de cette copie, utiliser par exemple
+`python robot/pi/emotion_server.py` ; ne pas recopier les anciennes commandes
+sans adapter leur chemin.
+
+Le dossier `pc/` contient une copie versionnée des clients. Le fichier vocal
+présent ici utilise `SpeechRecognition` et son service Google, avec accès
+Internet, alors que le journal décrit une version Vosk locale. La version Vosk
+du dossier personnel n'est pas fournie. Les validations matérielles consignées
+dans ce journal ne constituent donc pas une validation de cette copie du code.
+Le dossier personnel PC reste hors du périmètre de travail.
+
+Les poids `model_minilm/` ne sont pas fournis : il faut retrouver le modèle
+multilingue utilisé pour entraîner le classifieur avant de valider l'inférence.
+Les schémas annoncés dans `docs/` ne sont pas présents non plus ; les tableaux
+de câblage restent disponibles dans ce document.
 
 ---
+
+### Reprise après l’incident du PCA9685
+
+Un dégagement de fumée a été observé pendant l’essai de pose à 12 servos. La cause électrique reste à confirmer. Le firmware et le script bloquent le mode `--pose-sur-support`.
+
+Avant de reprendre les essais avec la carte neuve, vérifier le câblage hors tension et contrôler la polarité et la tension du convertisseur seul. La distribution séparée doit acheminer le positif **et le retour de puissance** des servos directement au convertisseur. Garder une masse commune avec la Teensy et le PCA9685. Le bornier `POWER` du PCA9685 reste vide et `VCC` reçoit les 3,3 V de la Teensy. Reprendre progressivement en mesurant tension et courant, sans relancer l’essai complet.
 
 ## 1. Vue d'ensemble
 
@@ -62,7 +88,7 @@ Légende : `[x]` fait, `[~]` en cours, `[ ]` à faire, `[?]` à confirmer.
     - mise en sécurité, coupure des sorties PWM (`teensy/stop_servos/stop_servos.ino`)
   - [x] 5g : **IMU MPU6050 détecté à `0x68` et lu** (2026-11-11) : pitch, roll, température, gyro Z cohérents au repos et au mouvement (détail, trame et conventions d'axes en §5, « IMU MPU6050 »). **Module monté à l'envers** (Z vers le bas) : roll corrigé = roll + 180°
   - [ ] 5g-bis : calibration des offsets (gyro, pitch, roll) au démarrage et **filtre complémentaire ou Madgwick** (pas encore fait)
-  - [ ] 5h : protocole série ASCII Pi ↔ Teensy sur `/dev/ttyACM0` avec watchdog
+  - [~] 5h : banc série Pi ↔ Teensy sur `/dev/ttyACM0`, watchdog, télémétrie ultrason et confirmations de direction testés sur Spot. Test des 12 articulations une à une effectué. L’essai de pose complète a été suspendu après l’incident du PCA9685.
 - [~] Phase 6 : 2e caméra et profondeur stéréo
   - [x] 6a : outil de dimensionnement `stereo_planner.py` (PC) terminé le 2026-10-31
   - [x] 6b : HFOV réel de la WPI408 mesuré sur la Pi (**55.4°**, et non 130°). Support imprimé : entraxe $B = 50\text{ mm}$, caméras parallèles (0°), plage utile théorique 0.48 m à 3.0 m à 640×480
@@ -73,6 +99,7 @@ Légende : `[x]` fait, `[~]` en cours, `[ ]` à faire, `[?]` à confirmer.
 - [ ] Phase 8 : locomotion par RL
 - [ ] Phase 9 : sécurité
 - [ ] Phase 10 : intégration, micro sur la Pi, autonomie sans PC
+- [x] Audit logiciel hors matériel (2026-11-04) : émotions/TCP, sécurité Teensy (`OE` / `FULL_OFF` / paliers 500 ms), scripts stéréo et suites `tests/` (`robot/docs/AUDIT.md`) ; non testé sur matériel réel
 
 ---
 
@@ -655,9 +682,13 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 
 - **2026-11-03 (électronique validée)** — Toute la partie électronique fonctionne (utilisateur) : alimentation, HC-SR04, PCA9685 et 12 servos. Firmwares ajoutés dans `teensy/` : `test_hcsr04`, `test_servo`, `set_all_90`, `walk_demo`, `stop_servos`. **Cartographie des 12 canaux** : AV-G 0-2, AV-D 4-6, AR-G 8-10, AR-D 12-14 (0 extrémité, 1 milieu, 2 épaule, le 4e canal de chaque groupe est libre). OE sur D2 (`LOW` = actif). **Il ne reste que l'IMU MPU6050 à tester** (puis le protocole série Pi ↔ Teensy).
 
+- **2026-11-04 (audit hors matériel)** — Corrections logicielles et tests hors matériel (`pc/`, `robot/pi/`, `robot/teensy/`, `tests/`, rapport `robot/docs/AUDIT.md`) : cadrage TCP par lignes UTF-8, sécurité `OE` sur D2 (`HIGH` immédiat, `FULL_OFF` 4096 et contrôle I2C avant `LOW`, paliers 500 ms ; recompiler les `.ino` avant usage), compteur persistant et appariement par identifiant pour la stéréo ; aucun test sur le robot réel.
+
 - **2026-11-10 (IMU)** — MPU6050 non détecté au scan I2C (seul le PCA9685 répondait, AD0 et INT laissés en l'air) ; cause trouvée : mauvaises soudures. Question : le garder sur le Teensy ou le passer sur la Pi 5 ; le firmware de test final tourne sur le Teensy. Brochage pin par pin du module vers le Teensy redonné (SDA 18, SCL 19, 3,3 V, GND).
 
 - **2026-11-11 (IMU validé, amplitudes des servos)** — Le MPU6050 répond à `0x68` et le firmware de test affiche pitch, roll, température et gyro Z. Trame au repos : pitch ≈ +0,5°, roll ≈ −175,8°, température puce ≈ 20,4 °C, gyro Z ≈ 0 °/s. Sens observés : gyro Z + vers la droite, pitch + vers le haut, roll qui augmente quand la droite monte, donc **module monté à l'envers** (déduit). Tableau d'amplitudes des 12 servos ajouté (§5).
+
+- **Novembre 2026 (vision et banc)** — Flux YOLOv8n limité aux personnes, suivi simulé et liaison série avec watchdog. Vérifications individuelles des canaux et des centres réalisées sur support. L’essai de pose complète a provoqué un dégagement de fumée sur le PCA9685. Mode de pose suspendu dans cette version en attendant la vérification de l’alimentation.
 
 *(Ajouter ici une ligne par étape
 
@@ -705,4 +736,5 @@ frame = picam2.capture_array()   # tableau numpy exploitable par OpenCV
 - **IMU, repère à respecter (2026-11-11)** : MPU6050 **monté à l'envers** (Z vers le bas, déduit des sens observés). **Roll corrigé = roll + 180°** (ramené dans ±180°), pitch + = nez vers le haut, gyro Z + = rotation vers la droite. Valeurs de repos mesurées : pitch ≈ +0,5°, roll corrigé ≈ +4,2°, gyro Z ≈ −0,03 °/s (mesurés robot droit sur une table). Détail et trame en §5. Les signes de gx et gy ne sont pas encore vérifiés.
 - **Amplitudes des servos (2026-11-11)** : tableau mesuré par l'utilisateur en §5 (symétrie droite = 180° − gauche, épaules centrées à 93° / 87°). À utiliser comme limites d'articulations.
 - **`[?]` Dépôt et dossier PC** : une version du README citait un dossier `pc/voice_client.py` dans le dépôt ; la règle de l'utilisateur reste de **ne pas transférer ni commiter** son dossier PC (`C:\Users\nomis\Documents\Spot\`). À confirmer avec lui avant de toucher à `pc/`.
+- **Audit hors matériel (2026-11-04, `robot/docs/AUDIT.md`)** : corrections et tests unitaires (`tests/test_emotion.py`, `tests/test_teensy.py`, `tests/test_stereo_pipeline.py`) intégrés hors matériel ; recompiler impérativement les sketchs `.ino` avant téléversement sur la Teensy (anciens binaires périmés) et noter que `pc/voice_client.py` versionné utilise Google `SpeechRecognition` (et non Vosk).
 - **Consigne de l'utilisateur sur ce README** : ne pas le réécrire en entier. Modifier uniquement les parties qui changent et ajouter ici (fin du fichier) les infos importantes pour l'agent suivant.
